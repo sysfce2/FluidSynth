@@ -757,6 +757,7 @@ void
 fluid_voice_update_param(fluid_voice_t *voice, int gen)
 {
     unsigned int count, z;
+    int i;
     fluid_real_t x = fluid_voice_gen_value(voice, gen);
 
     switch(gen)
@@ -873,7 +874,10 @@ fluid_voice_update_param(fluid_voice_t *voice, int gen)
 
     /* same as the two above, only for the custom filter */
     case GEN_CUSTOM_FILTERFC:
-        UPDATE_RVOICE_GENERIC_R1(fluid_iir_filter_set_fres, &voice->rvoice->resonant_custom_filter, x);
+        i = (voice->key * 100) - voice->root_pitch;
+        // chan; CC34; CC34_transformed key; root_pitch; pitch; offset; pitch - root_pitch ; pitch - key; gen[GEN_PITCH].mod
+        FLUID_LOG(FLUID_INFO, "%d;%d;%f;%d;%d;%d;%d;%d;%d;%f", voice->chan, fluid_channel_get_cc(voice->channel), x/100, voice->key, (int)voice->root_pitch, (int)voice->pitch, i, (int)(voice->pitch - voice->root_pitch), (int)(voice->pitch - voice->key*100), voice->gen[GEN_PITCH].mod);
+        UPDATE_RVOICE_GENERIC_R1(fluid_iir_filter_set_fres, &voice->rvoice->resonant_custom_filter, x + i + (voice->pitch - voice->key*100));
         break;
 
     case GEN_CUSTOM_FILTERQ:
