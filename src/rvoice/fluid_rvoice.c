@@ -466,8 +466,8 @@ fluid_rvoice_write(fluid_rvoice_t *voice, fluid_real_t *dsp_buf)
 
     fluid_iir_filter_apply(&voice->resonant_filter, dsp_buf, count);
 
-    /* additional custom filter - only uses the fixed modulator, no lfos... */
-    fluid_iir_filter_calc(&voice->resonant_custom_filter, voice->dsp.output_rate, 0);
+    /* additional custom filter... */
+    fluid_iir_filter_calc(&voice->resonant_custom_filter, voice->dsp.output_rate, (voice->dsp.pitch + voice->dsp.pitchoffset) - voice->dsp.root_pitch);
     fluid_iir_filter_apply(&voice->resonant_custom_filter, dsp_buf, count);
 
     return count;
@@ -772,9 +772,9 @@ DECLARE_FLUID_RVOICE_FUNCTION(fluid_rvoice_set_interp_method)
 DECLARE_FLUID_RVOICE_FUNCTION(fluid_rvoice_set_root_pitch_hz)
 {
     fluid_rvoice_t *voice = obj;
-    fluid_real_t value = param[0].real;
 
-    voice->dsp.root_pitch_hz = value;
+    voice->dsp.root_pitch_hz = param[0].real;
+    voice->dsp.root_pitch = param[1].real;
 }
 
 DECLARE_FLUID_RVOICE_FUNCTION(fluid_rvoice_set_pitch)

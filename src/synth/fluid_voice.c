@@ -52,12 +52,15 @@ fluid_voice_get_lower_boundary_for_attenuation(fluid_voice_t *voice);
       fluid_rvoice_eventhandler_push(voice->eventhandler, proc, voice->rvoice, param); \
   } while (0)
 
-#define UPDATE_RVOICE_GENERIC_R1(proc, obj, rarg) \
+#define UPDATE_RVOICE_GENERIC_R2(proc, obj, rarg1, rarg2) \
   do { \
       fluid_rvoice_param_t param[MAX_EVENT_PARAMS]; \
-      param[0].real = rarg; \
+      param[0].real = rarg1; \
+      param[1].real = rarg2; \
       fluid_rvoice_eventhandler_push(voice->eventhandler, proc, obj, param); \
   } while (0)
+
+#define UPDATE_RVOICE_GENERIC_R1(proc, obj, rarg1) UPDATE_RVOICE_GENERIC_R2(proc, obj, rarg1, 0)
 
 #define UPDATE_RVOICE_GENERIC_I1(proc, obj, iarg) \
   do { \
@@ -84,6 +87,7 @@ fluid_voice_get_lower_boundary_for_attenuation(fluid_voice_t *voice);
 
 
 #define UPDATE_RVOICE_R1(proc, arg1) UPDATE_RVOICE_GENERIC_R1(proc, voice->rvoice, arg1)
+#define UPDATE_RVOICE_R2(proc, arg1, arg2) UPDATE_RVOICE_GENERIC_R2(proc, voice->rvoice, arg1, arg2)
 #define UPDATE_RVOICE_I1(proc, arg1) UPDATE_RVOICE_GENERIC_I1(proc, voice->rvoice, arg1)
 
 #define UPDATE_RVOICE_BUFFERS_AMP(proc, iarg, rarg) UPDATE_RVOICE_GENERIC_IR(proc, &voice->rvoice->buffers, iarg, rarg)
@@ -757,7 +761,6 @@ void
 fluid_voice_update_param(fluid_voice_t *voice, int gen)
 {
     unsigned int count, z;
-    int i;
     fluid_real_t x = fluid_voice_gen_value(voice, gen);
 
     switch(gen)
@@ -855,7 +858,7 @@ fluid_voice_update_param(fluid_voice_t *voice, int gen)
 
         /* voice->pitch depends on voice->root_pitch, so calculate voice->pitch now */
         fluid_voice_calculate_gen_pitch(voice);
-        UPDATE_RVOICE_R1(fluid_rvoice_set_root_pitch_hz, x);
+        UPDATE_RVOICE_R2(fluid_rvoice_set_root_pitch_hz, x, voice->root_pitch);
 
         break;
 
@@ -874,10 +877,7 @@ fluid_voice_update_param(fluid_voice_t *voice, int gen)
 
     /* same as the two above, only for the custom filter */
     case GEN_CUSTOM_FILTERFC:
-        i = (voice->key * 100) - voice->root_pitch;
-        // chan; CC34; CC34_transformed key; root_pitch; pitch; offset; pitch - root_pitch ; pitch - key; gen[GEN_PITCH].mod
-        FLUID_LOG(FLUID_INFO, "%d;%d;%f;%d;%d;%d;%d;%d;%d;%f", voice->chan, fluid_channel_get_cc(voice->channel), x/100, voice->key, (int)voice->root_pitch, (int)voice->pitch, i, (int)(voice->pitch - voice->root_pitch), (int)(voice->pitch - voice->key*100), voice->gen[GEN_PITCH].mod);
-        UPDATE_RVOICE_GENERIC_R1(fluid_iir_filter_set_fres, &voice->rvoice->resonant_custom_filter, x + i + (voice->pitch - voice->key*100));
+        UPDATE_RVOICE_GENERIC_R1(fluid_iir_filter_set_fres, &voice->rvoice->resonant_custom_filter, x/* + (voice->pitch - voice->root_pitch)*/);
         break;
 
     case GEN_CUSTOM_FILTERQ:

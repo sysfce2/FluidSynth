@@ -108,7 +108,8 @@ struct _fluid_rvoice_dsp_t
     /* Stuff needed for phase calculations */
 
     fluid_real_t pitch;              /* the pitch in midicents */
-    fluid_real_t root_pitch_hz;
+    fluid_real_t root_pitch;         /* the root_pitch in midicents */
+    fluid_real_t root_pitch_hz;      /* the root_pitch in hertz */
     fluid_real_t output_rate;
 
     /* Stuff needed for amplitude calculations */

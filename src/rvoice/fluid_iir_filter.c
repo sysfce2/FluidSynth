@@ -220,11 +220,7 @@ DECLARE_FLUID_RVOICE_FUNCTION(fluid_iir_filter_set_q)
     }
     else if(flags & FLUID_IIR_Q_LINEAR)
     {
-        /* q is linear (only for user-defined filter)
-         * increase to avoid Q being somewhere between zero and one,
-         * which results in some strange amplified lowpass signal
-         */
-        q++;
+        /* q is linear (only for user-defined filter) and can be manipulated via FLUID_MOD_CUSTOM */
     }
     else
     {
