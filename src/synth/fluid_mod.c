@@ -39,6 +39,7 @@ fluid_mod_clone(fluid_mod_t *mod, const fluid_mod_t *src)
     mod->src2 = src->src2;
     mod->flags2 = src->flags2;
     mod->amount = src->amount;
+    mod->mapping_func = src->mapping_func;
 }
 
 /**
@@ -94,7 +95,19 @@ fluid_mod_set_dest(fluid_mod_t *mod, int dest)
 void
 fluid_mod_set_amount(fluid_mod_t *mod, double amount)
 {
-    mod->amount = (double) amount;
+    mod->amount = amount;
+}
+
+/**
+ * Set a user defined mapping function of type #fluid_mod_mapping_t to @p mod.
+ * To use this function, specify #FLUID_MOD_CUSTOM as source flag.
+ * @param mod The modulator instance
+ * @param mapping_function Pointer to the mapping function to assign
+ */
+void
+fluid_mod_set_custom_mapping(fluid_mod_t *mod, fluid_mod_mapping_t mapping_function)
+{
+    mod->mapping_func = mapping_function;
 }
 
 /**
@@ -241,7 +254,7 @@ fluid_mod_get_source_value(const unsigned char mod_src,
  * transforms the initial value retrieved by \c fluid_mod_get_source_value into [0.0;1.0]
  */
 static fluid_real_t
-fluid_mod_transform_source_value(fluid_real_t val, unsigned char mod_flags, const fluid_real_t range)
+fluid_mod_transform_source_value(fluid_mod_t* mod, fluid_real_t val, unsigned char mod_flags, const fluid_real_t range)
 {
     /* normalized value, i.e. usually in the range [0;1] */
     const fluid_real_t val_norm = val / range;
@@ -253,106 +266,121 @@ fluid_mod_transform_source_value(fluid_real_t val, unsigned char mod_flags, cons
      */
     mod_flags &= ~FLUID_MOD_CC;
 
-    switch(mod_flags/* & 0x0f*/)
+    if(FLUID_UNLIKELY((mod_flags & FLUID_MOD_CUSTOM) != 0))
     {
-    case FLUID_MOD_LINEAR | FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE: /* =0 */
-        val = val_norm;
-        break;
+        if(mod->mapping_func == NULL)
+        {
+            FLUID_LOG(FLUID_ERR, "Modulator has FLUID_MOD_CUSTOM flag set, but doesn't provide a mapping function, disabling modulator.");
+            val = 0.0f;
+        }
+        else
+        {
+            val = mod->mapping_func(mod, val_norm);
+        }
+    }
+    else
+    {
+        switch(mod_flags/* & 0x0f*/)
+        {
+            case FLUID_MOD_LINEAR | FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE: /* =0 */
+                val = val_norm;
+                break;
 
-    case FLUID_MOD_LINEAR | FLUID_MOD_UNIPOLAR | FLUID_MOD_NEGATIVE: /* =1 */
-        val = 1.0f - val_norm;
-        break;
+            case FLUID_MOD_LINEAR | FLUID_MOD_UNIPOLAR | FLUID_MOD_NEGATIVE: /* =1 */
+                val = 1.0f - val_norm;
+                break;
 
-    case FLUID_MOD_LINEAR | FLUID_MOD_BIPOLAR | FLUID_MOD_POSITIVE: /* =2 */
-        val = -1.0f + 2.0f * val_norm;
-        break;
+            case FLUID_MOD_LINEAR | FLUID_MOD_BIPOLAR | FLUID_MOD_POSITIVE: /* =2 */
+                val = -1.0f + 2.0f * val_norm;
+                break;
 
-    case FLUID_MOD_LINEAR | FLUID_MOD_BIPOLAR | FLUID_MOD_NEGATIVE: /* =3 */
-        val = 1.0f - 2.0f * val_norm;
-        break;
+            case FLUID_MOD_LINEAR | FLUID_MOD_BIPOLAR | FLUID_MOD_NEGATIVE: /* =3 */
+                val = 1.0f - 2.0f * val_norm;
+                break;
 
-    case FLUID_MOD_CONCAVE | FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE: /* =4 */
-        val = fluid_concave(127 * (val_norm));
-        break;
+            case FLUID_MOD_CONCAVE | FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE: /* =4 */
+                val = fluid_concave(127 * (val_norm));
+                break;
 
-    case FLUID_MOD_CONCAVE | FLUID_MOD_UNIPOLAR | FLUID_MOD_NEGATIVE: /* =5 */
-        val = fluid_concave(127 * (1.0f - val_norm));
-        break;
+            case FLUID_MOD_CONCAVE | FLUID_MOD_UNIPOLAR | FLUID_MOD_NEGATIVE: /* =5 */
+                val = fluid_concave(127 * (1.0f - val_norm));
+                break;
 
-    case FLUID_MOD_CONCAVE | FLUID_MOD_BIPOLAR | FLUID_MOD_POSITIVE: /* =6 */
-        val = (val_norm > 0.5f) ?  fluid_concave(127 * 2 * (val_norm - 0.5f))
-              : -fluid_concave(127 * 2 * (0.5f - val_norm));
-        break;
+            case FLUID_MOD_CONCAVE | FLUID_MOD_BIPOLAR | FLUID_MOD_POSITIVE: /* =6 */
+                val = (val_norm > 0.5f) ?  fluid_concave(127 * 2 * (val_norm - 0.5f))
+                        : -fluid_concave(127 * 2 * (0.5f - val_norm));
+                break;
 
-    case FLUID_MOD_CONCAVE | FLUID_MOD_BIPOLAR | FLUID_MOD_NEGATIVE: /* =7 */
-        val = (val_norm > 0.5f) ? -fluid_concave(127 * 2 * (val_norm - 0.5f))
-              :  fluid_concave(127 * 2 * (0.5f - val_norm));
-        break;
+            case FLUID_MOD_CONCAVE | FLUID_MOD_BIPOLAR | FLUID_MOD_NEGATIVE: /* =7 */
+                val = (val_norm > 0.5f) ? -fluid_concave(127 * 2 * (val_norm - 0.5f))
+                        :  fluid_concave(127 * 2 * (0.5f - val_norm));
+                break;
 
-    case FLUID_MOD_CONVEX | FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE: /* =8 */
-        val = fluid_convex(127 * (val_norm));
-        break;
+            case FLUID_MOD_CONVEX | FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE: /* =8 */
+                val = fluid_convex(127 * (val_norm));
+                break;
 
-    case FLUID_MOD_CONVEX | FLUID_MOD_UNIPOLAR | FLUID_MOD_NEGATIVE: /* =9 */
-        val = fluid_convex(127 * (1.0f - val_norm));
-        break;
+            case FLUID_MOD_CONVEX | FLUID_MOD_UNIPOLAR | FLUID_MOD_NEGATIVE: /* =9 */
+                val = fluid_convex(127 * (1.0f - val_norm));
+                break;
 
-    case FLUID_MOD_CONVEX | FLUID_MOD_BIPOLAR | FLUID_MOD_POSITIVE: /* =10 */
-        val = (val_norm > 0.5f) ?  fluid_convex(127 * 2 * (val_norm - 0.5f))
-              : -fluid_convex(127 * 2 * (0.5f - val_norm));
-        break;
+            case FLUID_MOD_CONVEX | FLUID_MOD_BIPOLAR | FLUID_MOD_POSITIVE: /* =10 */
+                val = (val_norm > 0.5f) ?  fluid_convex(127 * 2 * (val_norm - 0.5f))
+                        : -fluid_convex(127 * 2 * (0.5f - val_norm));
+                break;
 
-    case FLUID_MOD_CONVEX | FLUID_MOD_BIPOLAR | FLUID_MOD_NEGATIVE: /* =11 */
-        val = (val_norm > 0.5f) ? -fluid_convex(127 * 2 * (val_norm - 0.5f))
-              :  fluid_convex(127 * 2 * (0.5f - val_norm));
-        break;
+            case FLUID_MOD_CONVEX | FLUID_MOD_BIPOLAR | FLUID_MOD_NEGATIVE: /* =11 */
+                val = (val_norm > 0.5f) ? -fluid_convex(127 * 2 * (val_norm - 0.5f))
+                        :  fluid_convex(127 * 2 * (0.5f - val_norm));
+                break;
 
-    case FLUID_MOD_SWITCH | FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE: /* =12 */
-        val = (val_norm >= 0.5f) ? 1.0f : 0.0f;
-        break;
+            case FLUID_MOD_SWITCH | FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE: /* =12 */
+                val = (val_norm >= 0.5f) ? 1.0f : 0.0f;
+                break;
 
-    case FLUID_MOD_SWITCH | FLUID_MOD_UNIPOLAR | FLUID_MOD_NEGATIVE: /* =13 */
-        val = (val_norm >= 0.5f) ? 0.0f : 1.0f;
-        break;
+            case FLUID_MOD_SWITCH | FLUID_MOD_UNIPOLAR | FLUID_MOD_NEGATIVE: /* =13 */
+                val = (val_norm >= 0.5f) ? 0.0f : 1.0f;
+                break;
 
-    case FLUID_MOD_SWITCH | FLUID_MOD_BIPOLAR | FLUID_MOD_POSITIVE: /* =14 */
-        val = (val_norm >= 0.5f) ? 1.0f : -1.0f;
-        break;
+            case FLUID_MOD_SWITCH | FLUID_MOD_BIPOLAR | FLUID_MOD_POSITIVE: /* =14 */
+                val = (val_norm >= 0.5f) ? 1.0f : -1.0f;
+                break;
 
-    case FLUID_MOD_SWITCH | FLUID_MOD_BIPOLAR | FLUID_MOD_NEGATIVE: /* =15 */
-        val = (val_norm >= 0.5f) ? -1.0f : 1.0f;
-        break;
+            case FLUID_MOD_SWITCH | FLUID_MOD_BIPOLAR | FLUID_MOD_NEGATIVE: /* =15 */
+                val = (val_norm >= 0.5f) ? -1.0f : 1.0f;
+                break;
 
-    /*
-     * MIDI CCs only have a resolution of 7 bits. The closer val_norm gets to 1,
-     * the less will be the resulting change of the sinus. When using this sin()
-     * for scaling the cutoff frequency, there will be no audible difference between
-     * MIDI CCs 118 to 127. To avoid this waste of CCs multiply with 0.87
-     * (at least for unipolar) which makes sin() never get to 1.0 but to 0.98 which
-     * is close enough.
-     */
-    case FLUID_MOD_SIN | FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE: /* custom sin(x) */
-        val = FLUID_SIN((FLUID_M_PI / 2.0f * 0.87f) * val_norm);
-        break;
+            /*
+                * MIDI CCs only have a resolution of 7 bits. The closer val_norm gets to 1,
+                * the less will be the resulting change of the sinus. When using this sin()
+                * for scaling the cutoff frequency, there will be no audible difference between
+                * MIDI CCs 118 to 127. To avoid this waste of CCs multiply with 0.87
+                * (at least for unipolar) which makes sin() never get to 1.0 but to 0.98 which
+                * is close enough.
+                */
+            case FLUID_MOD_SIN | FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE: /* custom sin(x) */
+                val = FLUID_SIN((FLUID_M_PI / 2.0f * 0.87f) * val_norm);
+                break;
 
-    case FLUID_MOD_SIN | FLUID_MOD_UNIPOLAR | FLUID_MOD_NEGATIVE: /* custom */
-        val = FLUID_SIN((FLUID_M_PI / 2.0f * 0.87f) * (1.0f - val_norm));
-        break;
+            case FLUID_MOD_SIN | FLUID_MOD_UNIPOLAR | FLUID_MOD_NEGATIVE: /* custom */
+                val = FLUID_SIN((FLUID_M_PI / 2.0f * 0.87f) * (1.0f - val_norm));
+                break;
 
-    case FLUID_MOD_SIN | FLUID_MOD_BIPOLAR | FLUID_MOD_POSITIVE: /* custom */
-        val = (val_norm > 0.5f) ?  FLUID_SIN(FLUID_M_PI * (val_norm - 0.5f))
-              : -FLUID_SIN(FLUID_M_PI * (0.5f - val_norm));
-        break;
+            case FLUID_MOD_SIN | FLUID_MOD_BIPOLAR | FLUID_MOD_POSITIVE: /* custom */
+                val = (val_norm > 0.5f) ?  FLUID_SIN(FLUID_M_PI * (val_norm - 0.5f))
+                        : -FLUID_SIN(FLUID_M_PI * (0.5f - val_norm));
+                break;
 
-    case FLUID_MOD_SIN | FLUID_MOD_BIPOLAR | FLUID_MOD_NEGATIVE: /* custom */
-        val = (val_norm > 0.5f) ? -FLUID_SIN(FLUID_M_PI * (val_norm - 0.5f))
-              :  FLUID_SIN(FLUID_M_PI * (0.5f - val_norm));
-        break;
+            case FLUID_MOD_SIN | FLUID_MOD_BIPOLAR | FLUID_MOD_NEGATIVE: /* custom */
+                val = (val_norm > 0.5f) ? -FLUID_SIN(FLUID_M_PI * (val_norm - 0.5f))
+                        :  FLUID_SIN(FLUID_M_PI * (0.5f - val_norm));
+                break;
 
-    default:
-        FLUID_LOG(FLUID_ERR, "Unknown modulator type '%d', disabling modulator.", mod_flags);
-        val = 0.0f;
-        break;
+            default:
+                FLUID_LOG(FLUID_ERR, "Unknown modulator type '%d', disabling modulator.", mod_flags);
+                val = 0.0f;
+                break;
+        }
     }
 
     return val;
@@ -438,7 +466,7 @@ fluid_mod_get_value(fluid_mod_t *mod, fluid_voice_t *voice)
         v1 = fluid_mod_get_source_value(mod->src1, mod->flags1, &range1, voice);
 
         /* transform the input value */
-        v1 = fluid_mod_transform_source_value(v1, mod->flags1, range1);
+        v1 = fluid_mod_transform_source_value(mod, v1, mod->flags1, range1);
     }
     /* When primary source input (src1) is set to General Controller 'No Controller',
        output is forced to 0.0
@@ -460,7 +488,7 @@ fluid_mod_get_value(fluid_mod_t *mod, fluid_voice_t *voice)
         v2 = fluid_mod_get_source_value(mod->src2, mod->flags2, &range2, voice);
 
         /* transform the second input value */
-        v2 = fluid_mod_transform_source_value(v2, mod->flags2, range2);
+        v2 = fluid_mod_transform_source_value(mod, v2, mod->flags2, range2);
     }
     /* When secondary source input (src2) is set to General Controller 'No Controller',
        output is forced to +1.0
@@ -489,6 +517,7 @@ new_fluid_mod()
         FLUID_LOG(FLUID_ERR, "Out of memory");
         return NULL;
     }
+    FLUID_MEMSET(mod, 0, sizeof(*mod));
 
     return mod;
 }

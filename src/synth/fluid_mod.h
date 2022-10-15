@@ -35,6 +35,7 @@ struct _fluid_mod_t
     unsigned char src2;           /**< Source controller 2 */
     unsigned char flags2;         /**< Source controller 2 flags */
     double amount;                /**< Multiplier amount */
+    fluid_mod_mapping_t mapping_func; /**< Custom mapping function, might be NULL */
     /* The 'next' field allows to link modulators into a list.  It is
      * not used in fluid_voice.c, there each voice allocates memory for a
      * fixed number of modulators.  Since there may be a huge number of
